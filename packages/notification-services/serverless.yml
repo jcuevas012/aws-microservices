@@ -19,7 +19,7 @@ resources:
     MailQueue: ${file(resources/MailQueue.yml):MailQueue}
   Outputs:
     MailQueueArn: ${file(resources/MailQueue.yml):Outputs.MailQueueArn}
-    MailQueueUrl: ${file(resources/MailQueue.yml):Outputs.MailQueuUrl}
+    MailQueueUrl: ${file(resources/MailQueue.yml):Outputs.MailQueueUrl}
 
 functions:
   sendEmail:

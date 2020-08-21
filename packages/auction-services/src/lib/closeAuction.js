@@ -1,8 +1,9 @@
 import AWS from "aws-sdk"
 
-export async function closeAuction(auction) {
-  const documentClient = new AWS.DynamoDB.DocumentClient()
+const documentClient = new AWS.DynamoDB.DocumentClient()
+const sqs = new AWS.SQS()
 
+export async function closeAuction(auction) {
   const params = {
     TableName: process.env.AUCTION_TABLE_NAME,
     Key: { id: auction.id },
@@ -16,6 +17,33 @@ export async function closeAuction(auction) {
   }
 
   const result = await documentClient.update(params).promise()
+
+  const { seller, higthestBid, title } = auction
+  const { amount, bidder } = higthestBid
+
+  const notifySeller = sqs
+    .sendMessage({
+      QueueUrl: process.env.MAIL_QUEUE_URL,
+      MessageBody: JSON.stringify({
+        subject: "Item has been sold",
+        body: `Woo!. Your ${title} has been sold in ${amount} dollars`,
+        recipient: seller,
+      }),
+    })
+    .promise()
+
+  const notifyBidder = sqs
+    .sendMessage({
+      QueueUrl: process.env.MAIL_QUEUE_URL,
+      MessageBody: JSON.stringify({
+        subject: "You won the item",
+        body: `Woo!. You won the item ${title}  in ${amount} dollars`,
+        recipient: bidder,
+      }),
+    })
+    .promise()
+
+  Promise.all([notifySeller, notifyBidder])
 
   return result
 }
