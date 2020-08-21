@@ -21,6 +21,20 @@ export async function closeAuction(auction) {
   const { seller, higthestBid, title } = auction
   const { amount, bidder } = higthestBid
 
+  if (amount === 0) {
+    await sqs
+      .sendMessage({
+        QueueUrl: process.env.MAIL_QUEUE_URL,
+        MessageBody: JSON.stringify({
+          subject: "Not bidder for your auction",
+          body: `Your auction has closed with any bidder`,
+          recipient: seller,
+        }),
+      })
+      .promise()
+    return
+  }
+
   const notifySeller = sqs
     .sendMessage({
       QueueUrl: process.env.MAIL_QUEUE_URL,
