@@ -81,11 +81,330 @@
 /******/
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 30);
+/******/ 	return __webpack_require__(__webpack_require__.s = 38);
 /******/ })
 /************************************************************************/
 /******/ ([
 /* 0 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/*!
+ * http-errors
+ * Copyright(c) 2014 Jonathan Ong
+ * Copyright(c) 2016 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+
+
+/**
+ * Module dependencies.
+ * @private
+ */
+
+var deprecate = __webpack_require__(26)('http-errors')
+var setPrototypeOf = __webpack_require__(30)
+var statuses = __webpack_require__(31)
+var inherits = __webpack_require__(33)
+var toIdentifier = __webpack_require__(36)
+
+/**
+ * Module exports.
+ * @public
+ */
+
+module.exports = createError
+module.exports.HttpError = createHttpErrorConstructor()
+module.exports.isHttpError = createIsHttpErrorFunction(module.exports.HttpError)
+
+// Populate exports for all constructors
+populateConstructorExports(module.exports, statuses.codes, module.exports.HttpError)
+
+/**
+ * Get the code class of a status code.
+ * @private
+ */
+
+function codeClass (status) {
+  return Number(String(status).charAt(0) + '00')
+}
+
+/**
+ * Create a new HTTP Error.
+ *
+ * @returns {Error}
+ * @public
+ */
+
+function createError () {
+  // so much arity going on ~_~
+  var err
+  var msg
+  var status = 500
+  var props = {}
+  for (var i = 0; i < arguments.length; i++) {
+    var arg = arguments[i]
+    if (arg instanceof Error) {
+      err = arg
+      status = err.status || err.statusCode || status
+      continue
+    }
+    switch (typeof arg) {
+      case 'string':
+        msg = arg
+        break
+      case 'number':
+        status = arg
+        if (i !== 0) {
+          deprecate('non-first-argument status code; replace with createError(' + arg + ', ...)')
+        }
+        break
+      case 'object':
+        props = arg
+        break
+    }
+  }
+
+  if (typeof status === 'number' && (status < 400 || status >= 600)) {
+    deprecate('non-error status code; use only 4xx or 5xx status codes')
+  }
+
+  if (typeof status !== 'number' ||
+    (!statuses[status] && (status < 400 || status >= 600))) {
+    status = 500
+  }
+
+  // constructor
+  var HttpError = createError[status] || createError[codeClass(status)]
+
+  if (!err) {
+    // create error
+    err = HttpError
+      ? new HttpError(msg)
+      : new Error(msg || statuses[status])
+    Error.captureStackTrace(err, createError)
+  }
+
+  if (!HttpError || !(err instanceof HttpError) || err.status !== status) {
+    // add properties to generic error
+    err.expose = status < 500
+    err.status = err.statusCode = status
+  }
+
+  for (var key in props) {
+    if (key !== 'status' && key !== 'statusCode') {
+      err[key] = props[key]
+    }
+  }
+
+  return err
+}
+
+/**
+ * Create HTTP error abstract base class.
+ * @private
+ */
+
+function createHttpErrorConstructor () {
+  function HttpError () {
+    throw new TypeError('cannot construct abstract class')
+  }
+
+  inherits(HttpError, Error)
+
+  return HttpError
+}
+
+/**
+ * Create a constructor for a client error.
+ * @private
+ */
+
+function createClientErrorConstructor (HttpError, name, code) {
+  var className = toClassName(name)
+
+  function ClientError (message) {
+    // create the error object
+    var msg = message != null ? message : statuses[code]
+    var err = new Error(msg)
+
+    // capture a stack trace to the construction point
+    Error.captureStackTrace(err, ClientError)
+
+    // adjust the [[Prototype]]
+    setPrototypeOf(err, ClientError.prototype)
+
+    // redefine the error message
+    Object.defineProperty(err, 'message', {
+      enumerable: true,
+      configurable: true,
+      value: msg,
+      writable: true
+    })
+
+    // redefine the error name
+    Object.defineProperty(err, 'name', {
+      enumerable: false,
+      configurable: true,
+      value: className,
+      writable: true
+    })
+
+    return err
+  }
+
+  inherits(ClientError, HttpError)
+  nameFunc(ClientError, className)
+
+  ClientError.prototype.status = code
+  ClientError.prototype.statusCode = code
+  ClientError.prototype.expose = true
+
+  return ClientError
+}
+
+/**
+ * Create function to test is a value is a HttpError.
+ * @private
+ */
+
+function createIsHttpErrorFunction (HttpError) {
+  return function isHttpError (val) {
+    if (!val || typeof val !== 'object') {
+      return false
+    }
+
+    if (val instanceof HttpError) {
+      return true
+    }
+
+    return val instanceof Error &&
+      typeof val.expose === 'boolean' &&
+      typeof val.statusCode === 'number' && val.status === val.statusCode
+  }
+}
+
+/**
+ * Create a constructor for a server error.
+ * @private
+ */
+
+function createServerErrorConstructor (HttpError, name, code) {
+  var className = toClassName(name)
+
+  function ServerError (message) {
+    // create the error object
+    var msg = message != null ? message : statuses[code]
+    var err = new Error(msg)
+
+    // capture a stack trace to the construction point
+    Error.captureStackTrace(err, ServerError)
+
+    // adjust the [[Prototype]]
+    setPrototypeOf(err, ServerError.prototype)
+
+    // redefine the error message
+    Object.defineProperty(err, 'message', {
+      enumerable: true,
+      configurable: true,
+      value: msg,
+      writable: true
+    })
+
+    // redefine the error name
+    Object.defineProperty(err, 'name', {
+      enumerable: false,
+      configurable: true,
+      value: className,
+      writable: true
+    })
+
+    return err
+  }
+
+  inherits(ServerError, HttpError)
+  nameFunc(ServerError, className)
+
+  ServerError.prototype.status = code
+  ServerError.prototype.statusCode = code
+  ServerError.prototype.expose = false
+
+  return ServerError
+}
+
+/**
+ * Set the name of a function, if possible.
+ * @private
+ */
+
+function nameFunc (func, name) {
+  var desc = Object.getOwnPropertyDescriptor(func, 'name')
+
+  if (desc && desc.configurable) {
+    desc.value = name
+    Object.defineProperty(func, 'name', desc)
+  }
+}
+
+/**
+ * Populate the exports object with constructors for every error class.
+ * @private
+ */
+
+function populateConstructorExports (exports, codes, HttpError) {
+  codes.forEach(function forEachCode (code) {
+    var CodeError
+    var name = toIdentifier(statuses[code])
+
+    switch (codeClass(code)) {
+      case 400:
+        CodeError = createClientErrorConstructor(HttpError, name, code)
+        break
+      case 500:
+        CodeError = createServerErrorConstructor(HttpError, name, code)
+        break
+    }
+
+    if (CodeError) {
+      // export the constructor
+      exports[code] = CodeError
+      exports[name] = CodeError
+    }
+  })
+
+  // backwards-compatibility
+  exports["I'mateapot"] = deprecate.function(exports.ImATeapot,
+    '"I\'mateapot"; use "ImATeapot" instead')
+}
+
+/**
+ * Get a class name from a name identifier.
+ * @private
+ */
+
+function toClassName (name) {
+  return name.substr(-5) !== 'Error'
+    ? name + 'Error'
+    : name
+}
+
+
+/***/ }),
+/* 1 */
+/***/ (function(module, exports) {
+
+module.exports = require("aws-sdk");
+
+/***/ }),
+/* 2 */
+/***/ (function(module, exports, __webpack_require__) {
+
+__webpack_require__(13).install();
+
+
+/***/ }),
+/* 3 */
 /***/ (function(module, exports) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -508,20 +827,320 @@ exports.compareByGeneratedPositionsInflated = compareByGeneratedPositionsInflate
 
 
 /***/ }),
-/* 1 */
-/***/ (function(module, exports) {
-
-module.exports = require("aws-sdk");
-
-/***/ }),
-/* 2 */
+/* 4 */
 /***/ (function(module, exports, __webpack_require__) {
 
-__webpack_require__(9).install();
+const isPromise = __webpack_require__(23)
+const once = __webpack_require__(24)
+
+/**
+ * @typedef middy
+ * @type function
+ * @param {Object} event - the AWS Lambda event from the original handler
+ * @param {Object} context - the AWS Lambda context from the original handler
+ * @param {function} callback - the AWS Lambda callback from the original handler
+ * @property {useFunction} use - attach one or more new middlewares
+ * @property {applyMiddlewareFunction} applyMiddleware - attach a new middleware
+ * @property {middlewareAttachFunction} before - attach a new *before-only* middleware
+ * @property {middlewareAttachFunction} after - attach a new *after-only* middleware
+ * @property {middlewareAttachFunction} onError - attach a new *error-handler-only* middleware
+ * @property {Object} __middlewares - contains the list of all the attached
+ *   middlewares organised by type (`before`, `after`, `onError`). To be used only
+ *   for testing and debugging purposes
+ */
+
+/**
+ * @typedef useFunction
+ * @type {function}
+ * @param {middlewareObject|middlewareObject[]} - the middleware object or array of middleware objects to attach
+ * @return {middy}
+ */
+
+/**
+ * @typedef applyMiddlewareFunction
+ * @type {function}
+ * @param {middlewareObject} - the middleware object to attach
+ * @return {middy}
+ */
+
+/**
+ * @typedef middlewareAttachFunction
+ * @type {function}
+ * @param {middlewareFunction} - the middleware function to attach
+ * @return {middy}
+ */
+
+/**
+  * @typedef middlewareNextFunction
+  * @type {function}
+  * @param {error} error - An optional error object to pass in case an error occurred
+  */
+
+/**
+ * @typedef middlewareFunction
+ * @type {function}
+ * @param {function} handler - the original handler function.
+ *   It will expose properties `event`, `context`, `response`, `error` and `callback` that can
+ *   be used to interact with the middleware lifecycle
+ * @param {middlewareNextFunction} next - the callback to invoke to pass the control to the next middleware
+ * @return {void|Promise} - A middleware can return a Promise instead of using the `next` function as a callback.
+ *                          In this case middy will wait for the promise to resolve (or reject) and it will automatically
+ *                          propagate the result to the next middleware.
+ */
+
+/**
+ * @typedef middlewareObject
+ * @type Object
+ * @property {middlewareFunction} before - the middleware function to attach as *before* middleware
+ * @property {middlewareFunction} after - the middleware function to attach as *after* middleware
+ * @property {middlewareFunction} onError - the middleware function to attach as *error* middleware
+ */
+
+const runMiddlewares = (middlewares, instance, done) => {
+  const stack = Array.from(middlewares)
+  const runNext = (err) => {
+    try {
+      if (err) {
+        return done(err)
+      }
+
+      const nextMiddleware = stack.shift()
+
+      if (nextMiddleware) {
+        const retVal = nextMiddleware(instance, runNext)
+
+        if (retVal) {
+          if (!isPromise(retVal)) {
+            throw new Error('Unexpected return value in middleware')
+          }
+
+          retVal
+            .then(runNext)
+            .catch(done)
+        }
+
+        return
+      }
+
+      return done()
+    } catch (err) {
+      return done(err)
+    }
+  }
+
+  runNext()
+}
+
+const runErrorMiddlewares = (middlewares, instance, done) => {
+  const stack = Array.from(middlewares)
+  instance.__handledError = false
+  const runNext = (err) => {
+    try {
+      if (!err) {
+        instance.__handledError = true
+      }
+
+      const nextMiddleware = stack.shift()
+
+      if (nextMiddleware) {
+        const retVal = nextMiddleware(instance, runNext)
+
+        if (retVal) {
+          if (!isPromise(retVal)) {
+            const invalidMiddlewareReturnError = new Error('Unexpected return value in onError middleware')
+            // embed original error to avoid swallowing the real exception
+            invalidMiddlewareReturnError.originalError = err
+            throw invalidMiddlewareReturnError
+          }
+
+          retVal
+            .then(runNext)
+            .catch(done)
+        }
+
+        return
+      }
+
+      return done(instance.__handledError ? null : err)
+    } catch (err) {
+      return done(err)
+    }
+  }
+
+  runNext(instance.error)
+}
+
+/**
+ * Middy factory function. Use it to wrap your existing handler to enable middlewares on it.
+ * @param  {function} handler - your original AWS Lambda function
+ * @return {middy} - a `middy` instance
+ */
+const middy = (handler) => {
+  const beforeMiddlewares = []
+  const afterMiddlewares = []
+  const errorMiddlewares = []
+
+  const instance = (event, context, callback) => {
+    instance.event = event
+    instance.context = context
+    instance.callback = callback
+    instance.response = null
+    instance.error = null
+
+    const middyPromise = new Promise((resolve, reject) => {
+      const terminate = (err) => {
+        if (err) {
+          return callback ? callback(err) : reject(err)
+        }
+
+        return callback ? callback(null, instance.response) : resolve(instance.response)
+      }
+
+      const errorHandler = err => {
+        instance.error = err
+        return runErrorMiddlewares(errorMiddlewares, instance, terminate)
+      }
+
+      runMiddlewares(beforeMiddlewares, instance, (err) => {
+        if (err) return errorHandler(err)
+
+        const onHandlerError = once((err) => {
+          instance.response = null
+          errorHandler(err)
+        })
+
+        const onHandlerSuccess = once((response) => {
+          instance.response = response
+          runMiddlewares(afterMiddlewares, instance, (err) => {
+            if (err) return errorHandler(err)
+
+            terminate()
+          })
+        })
+
+        const handlerReturnValue = handler.call(instance, instance.event, context, (err, response) => {
+          if (err) return onHandlerError(err)
+          onHandlerSuccess(response)
+        })
+
+        // support for async/await promise return in handler
+        if (handlerReturnValue) {
+          if (!isPromise(handlerReturnValue)) {
+            throw new Error('Unexpected return value in handler')
+          }
+
+          handlerReturnValue
+            .then(onHandlerSuccess)
+            .catch(onHandlerError)
+        }
+      })
+    })
+    if (!instance.callback) return middyPromise
+  }
+
+  instance.use = (middlewares) => {
+    if (Array.isArray(middlewares)) {
+      middlewares.forEach(middleware => instance.applyMiddleware(middleware))
+      return instance
+    } else if (typeof middlewares === 'object') {
+      return instance.applyMiddleware(middlewares)
+    } else {
+      throw new Error('Middy.use() accepts an object or an array of objects')
+    }
+  }
+
+  instance.applyMiddleware = (middleware) => {
+    if (typeof middleware !== 'object') {
+      throw new Error('Middleware must be an object')
+    }
+
+    const { before, after, onError } = middleware
+
+    if (!before && !after && !onError) {
+      throw new Error('Middleware must contain at least one key among "before", "after", "onError"')
+    }
+
+    if (before) {
+      instance.before(before)
+    }
+
+    if (after) {
+      instance.after(after)
+    }
+
+    if (onError) {
+      instance.onError(onError)
+    }
+
+    return instance
+  }
+
+  instance.before = (beforeMiddleware) => {
+    beforeMiddlewares.push(beforeMiddleware)
+
+    return instance
+  }
+
+  instance.after = (afterMiddleware) => {
+    afterMiddlewares.unshift(afterMiddleware)
+
+    return instance
+  }
+
+  instance.onError = (errorMiddleware) => {
+    errorMiddlewares.push(errorMiddleware)
+
+    return instance
+  }
+
+  instance.__middlewares = {
+    before: beforeMiddlewares,
+    after: afterMiddlewares,
+    onError: errorMiddlewares
+  }
+
+  return instance
+}
+
+module.exports = middy
 
 
 /***/ }),
-/* 3 */
+/* 5 */
+/***/ (function(module, exports) {
+
+module.exports = (opts) => {
+  const defaults = {
+    logger: console.error
+  }
+
+  const options = Object.assign({}, defaults, opts)
+
+  return ({
+    onError: (handler, next) => {
+      // if there are a `statusCode` and an `error` field
+      // this is a valid http error object
+      if (handler.error.statusCode && handler.error.message) {
+        if (typeof options.logger === 'function') {
+          options.logger(handler.error)
+        }
+
+        handler.response = {
+          statusCode: handler.error.statusCode,
+          body: handler.error.message
+        }
+
+        return next()
+      }
+
+      return next(handler.error)
+    }
+  })
+}
+
+
+/***/ }),
+/* 6 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -531,10 +1150,10 @@ __webpack_require__(9).install();
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-var base64VLQ = __webpack_require__(4);
-var util = __webpack_require__(0);
-var ArraySet = __webpack_require__(5).ArraySet;
-var MappingList = __webpack_require__(12).MappingList;
+var base64VLQ = __webpack_require__(7);
+var util = __webpack_require__(3);
+var ArraySet = __webpack_require__(8).ArraySet;
+var MappingList = __webpack_require__(16).MappingList;
 
 /**
  * An instance of the SourceMapGenerator represents a source map which is
@@ -943,7 +1562,7 @@ exports.SourceMapGenerator = SourceMapGenerator;
 
 
 /***/ }),
-/* 4 */
+/* 7 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -983,7 +1602,7 @@ exports.SourceMapGenerator = SourceMapGenerator;
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-var base64 = __webpack_require__(11);
+var base64 = __webpack_require__(15);
 
 // A single base 64 digit can contain 6 bits of data. For the base 64 variable
 // length quantities we use in the source map spec, the first bit is the sign,
@@ -1089,7 +1708,7 @@ exports.decode = function base64VLQ_decode(aStr, aIndex, aOutParam) {
 
 
 /***/ }),
-/* 5 */
+/* 8 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -1099,7 +1718,7 @@ exports.decode = function base64VLQ_decode(aStr, aIndex, aOutParam) {
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-var util = __webpack_require__(0);
+var util = __webpack_require__(3);
 var has = Object.prototype.hasOwnProperty;
 var hasNativeMap = typeof Map !== "undefined";
 
@@ -1216,13 +1835,13 @@ exports.ArraySet = ArraySet;
 
 
 /***/ }),
-/* 6 */
+/* 9 */
 /***/ (function(module, exports) {
 
 module.exports = require("path");
 
 /***/ }),
-/* 7 */
+/* 10 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1239,7 +1858,7 @@ module.exports = require("path");
  * @private
  */
 
-var EventEmitter = __webpack_require__(20).EventEmitter
+var EventEmitter = __webpack_require__(27).EventEmitter
 
 /**
  * Module exports.
@@ -1267,11 +1886,11 @@ lazyProperty(module.exports, 'callSiteToString', function callSiteToString () {
   Error.prepareStackTrace = prep
   Error.stackTraceLimit = limit
 
-  return stack[0].toString ? toString : __webpack_require__(21)
+  return stack[0].toString ? toString : __webpack_require__(28)
 })
 
 lazyProperty(module.exports, 'eventListenerCount', function eventListenerCount () {
-  return EventEmitter.listenerCount || __webpack_require__(22)
+  return EventEmitter.listenerCount || __webpack_require__(29)
 })
 
 /**
@@ -1308,321 +1927,90 @@ function toString (obj) {
 
 
 /***/ }),
-/* 8 */
-/***/ (function(module, exports, __webpack_require__) {
+/* 11 */
+/***/ (function(module, exports) {
 
-"use strict";
-/*!
- * http-errors
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2016 Douglas Christopher Wilson
- * MIT Licensed
- */
+module.exports = opts => {
+  const defaults = {
+    payloadFormatVersion: 1
+  }
 
+  const options = Object.assign({}, defaults, opts)
 
+  return {
+    before: (handler, next) => {
+      const { event } = handler
+      let isHttpEvent = false
 
-/**
- * Module dependencies.
- * @private
- */
+      switch (options.payloadFormatVersion) {
+        case 1:
+          isHttpEvent = Object.prototype.hasOwnProperty.call(event, 'httpMethod')
+          break
+        case 2:
+          isHttpEvent = Object.prototype.hasOwnProperty.call(event, 'requestContext') &&
+            Object.prototype.hasOwnProperty.call(event.requestContext, 'http') &&
+            Object.prototype.hasOwnProperty.call(event.requestContext.http, 'method')
+          break
+        default:
+          throw new Error('Unknow API Gateway Payload format. Please use value 1 or 2.')
+      }
 
-var deprecate = __webpack_require__(19)('http-errors')
-var setPrototypeOf = __webpack_require__(23)
-var statuses = __webpack_require__(24)
-var inherits = __webpack_require__(26)
-var toIdentifier = __webpack_require__(29)
-
-/**
- * Module exports.
- * @public
- */
-
-module.exports = createError
-module.exports.HttpError = createHttpErrorConstructor()
-module.exports.isHttpError = createIsHttpErrorFunction(module.exports.HttpError)
-
-// Populate exports for all constructors
-populateConstructorExports(module.exports, statuses.codes, module.exports.HttpError)
-
-/**
- * Get the code class of a status code.
- * @private
- */
-
-function codeClass (status) {
-  return Number(String(status).charAt(0) + '00')
-}
-
-/**
- * Create a new HTTP Error.
- *
- * @returns {Error}
- * @public
- */
-
-function createError () {
-  // so much arity going on ~_~
-  var err
-  var msg
-  var status = 500
-  var props = {}
-  for (var i = 0; i < arguments.length; i++) {
-    var arg = arguments[i]
-    if (arg instanceof Error) {
-      err = arg
-      status = err.status || err.statusCode || status
-      continue
-    }
-    switch (typeof arg) {
-      case 'string':
-        msg = arg
-        break
-      case 'number':
-        status = arg
-        if (i !== 0) {
-          deprecate('non-first-argument status code; replace with createError(' + arg + ', ...)')
+      if (isHttpEvent) {
+        event.queryStringParameters = event.queryStringParameters || {}
+        event.pathParameters = event.pathParameters || {}
+        if (options.payloadFormatVersion === 1) {
+          event.multiValueQueryStringParameters = event.multiValueQueryStringParameters || {}
         }
-        break
-      case 'object':
-        props = arg
-        break
+      }
+
+      return next()
     }
   }
-
-  if (typeof status === 'number' && (status < 400 || status >= 600)) {
-    deprecate('non-error status code; use only 4xx or 5xx status codes')
-  }
-
-  if (typeof status !== 'number' ||
-    (!statuses[status] && (status < 400 || status >= 600))) {
-    status = 500
-  }
-
-  // constructor
-  var HttpError = createError[status] || createError[codeClass(status)]
-
-  if (!err) {
-    // create error
-    err = HttpError
-      ? new HttpError(msg)
-      : new Error(msg || statuses[status])
-    Error.captureStackTrace(err, createError)
-  }
-
-  if (!HttpError || !(err instanceof HttpError) || err.status !== status) {
-    // add properties to generic error
-    err.expose = status < 500
-    err.status = err.statusCode = status
-  }
-
-  for (var key in props) {
-    if (key !== 'status' && key !== 'statusCode') {
-      err[key] = props[key]
-    }
-  }
-
-  return err
-}
-
-/**
- * Create HTTP error abstract base class.
- * @private
- */
-
-function createHttpErrorConstructor () {
-  function HttpError () {
-    throw new TypeError('cannot construct abstract class')
-  }
-
-  inherits(HttpError, Error)
-
-  return HttpError
-}
-
-/**
- * Create a constructor for a client error.
- * @private
- */
-
-function createClientErrorConstructor (HttpError, name, code) {
-  var className = toClassName(name)
-
-  function ClientError (message) {
-    // create the error object
-    var msg = message != null ? message : statuses[code]
-    var err = new Error(msg)
-
-    // capture a stack trace to the construction point
-    Error.captureStackTrace(err, ClientError)
-
-    // adjust the [[Prototype]]
-    setPrototypeOf(err, ClientError.prototype)
-
-    // redefine the error message
-    Object.defineProperty(err, 'message', {
-      enumerable: true,
-      configurable: true,
-      value: msg,
-      writable: true
-    })
-
-    // redefine the error name
-    Object.defineProperty(err, 'name', {
-      enumerable: false,
-      configurable: true,
-      value: className,
-      writable: true
-    })
-
-    return err
-  }
-
-  inherits(ClientError, HttpError)
-  nameFunc(ClientError, className)
-
-  ClientError.prototype.status = code
-  ClientError.prototype.statusCode = code
-  ClientError.prototype.expose = true
-
-  return ClientError
-}
-
-/**
- * Create function to test is a value is a HttpError.
- * @private
- */
-
-function createIsHttpErrorFunction (HttpError) {
-  return function isHttpError (val) {
-    if (!val || typeof val !== 'object') {
-      return false
-    }
-
-    if (val instanceof HttpError) {
-      return true
-    }
-
-    return val instanceof Error &&
-      typeof val.expose === 'boolean' &&
-      typeof val.statusCode === 'number' && val.status === val.statusCode
-  }
-}
-
-/**
- * Create a constructor for a server error.
- * @private
- */
-
-function createServerErrorConstructor (HttpError, name, code) {
-  var className = toClassName(name)
-
-  function ServerError (message) {
-    // create the error object
-    var msg = message != null ? message : statuses[code]
-    var err = new Error(msg)
-
-    // capture a stack trace to the construction point
-    Error.captureStackTrace(err, ServerError)
-
-    // adjust the [[Prototype]]
-    setPrototypeOf(err, ServerError.prototype)
-
-    // redefine the error message
-    Object.defineProperty(err, 'message', {
-      enumerable: true,
-      configurable: true,
-      value: msg,
-      writable: true
-    })
-
-    // redefine the error name
-    Object.defineProperty(err, 'name', {
-      enumerable: false,
-      configurable: true,
-      value: className,
-      writable: true
-    })
-
-    return err
-  }
-
-  inherits(ServerError, HttpError)
-  nameFunc(ServerError, className)
-
-  ServerError.prototype.status = code
-  ServerError.prototype.statusCode = code
-  ServerError.prototype.expose = false
-
-  return ServerError
-}
-
-/**
- * Set the name of a function, if possible.
- * @private
- */
-
-function nameFunc (func, name) {
-  var desc = Object.getOwnPropertyDescriptor(func, 'name')
-
-  if (desc && desc.configurable) {
-    desc.value = name
-    Object.defineProperty(func, 'name', desc)
-  }
-}
-
-/**
- * Populate the exports object with constructors for every error class.
- * @private
- */
-
-function populateConstructorExports (exports, codes, HttpError) {
-  codes.forEach(function forEachCode (code) {
-    var CodeError
-    var name = toIdentifier(statuses[code])
-
-    switch (codeClass(code)) {
-      case 400:
-        CodeError = createClientErrorConstructor(HttpError, name, code)
-        break
-      case 500:
-        CodeError = createServerErrorConstructor(HttpError, name, code)
-        break
-    }
-
-    if (CodeError) {
-      // export the constructor
-      exports[code] = CodeError
-      exports[name] = CodeError
-    }
-  })
-
-  // backwards-compatibility
-  exports["I'mateapot"] = deprecate.function(exports.ImATeapot,
-    '"I\'mateapot"; use "ImATeapot" instead')
-}
-
-/**
- * Get a class name from a name identifier.
- * @private
- */
-
-function toClassName (name) {
-  return name.substr(-5) !== 'Error'
-    ? name + 'Error'
-    : name
 }
 
 
 /***/ }),
-/* 9 */
+/* 12 */
 /***/ (function(module, exports, __webpack_require__) {
 
-var SourceMapConsumer = __webpack_require__(10).SourceMapConsumer;
-var path = __webpack_require__(6);
+const createError = __webpack_require__(0)
+const contentType = __webpack_require__(37)
+
+module.exports = (opts) => ({
+  before: (handler, next) => {
+    opts = opts || {}
+    if (handler.event.headers) {
+      const contentTypeHeader = handler.event.headers['content-type'] || handler.event.headers['Content-Type']
+      if (contentTypeHeader) {
+        const { type } = contentType.parse(contentTypeHeader)
+        if (type === 'application/json') {
+          try {
+            const data = handler.event.isBase64Encoded
+              ? Buffer.from(handler.event.body, 'base64').toString()
+              : handler.event.body
+
+            handler.event.body = JSON.parse(data, opts.reviver)
+          } catch (err) {
+            throw new createError.UnprocessableEntity('Content type defined as JSON but an invalid JSON was provided')
+          }
+        }
+      }
+    }
+    next()
+  }
+})
+
+
+/***/ }),
+/* 13 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var SourceMapConsumer = __webpack_require__(14).SourceMapConsumer;
+var path = __webpack_require__(9);
 
 var fs;
 try {
-  fs = __webpack_require__(17);
+  fs = __webpack_require__(21);
   if (!fs.existsSync || !fs.readFileSync) {
     // fs doesn't have all methods we need
     fs = null;
@@ -2098,7 +2486,7 @@ exports.install = function(options) {
   if (options.hookRequire && !isInBrowser()) {
     var Module;
     try {
-      Module = __webpack_require__(18);
+      Module = __webpack_require__(22);
     } catch (err) {
       // NOP: Loading in catch block to convert webpack error to warning.
     }
@@ -2147,7 +2535,7 @@ exports.install = function(options) {
 
 
 /***/ }),
-/* 10 */
+/* 14 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /*
@@ -2155,13 +2543,13 @@ exports.install = function(options) {
  * Licensed under the New BSD license. See LICENSE.txt or:
  * http://opensource.org/licenses/BSD-3-Clause
  */
-exports.SourceMapGenerator = __webpack_require__(3).SourceMapGenerator;
-exports.SourceMapConsumer = __webpack_require__(13).SourceMapConsumer;
-exports.SourceNode = __webpack_require__(16).SourceNode;
+exports.SourceMapGenerator = __webpack_require__(6).SourceMapGenerator;
+exports.SourceMapConsumer = __webpack_require__(17).SourceMapConsumer;
+exports.SourceNode = __webpack_require__(20).SourceNode;
 
 
 /***/ }),
-/* 11 */
+/* 15 */
 /***/ (function(module, exports) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -2234,7 +2622,7 @@ exports.decode = function (charCode) {
 
 
 /***/ }),
-/* 12 */
+/* 16 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -2244,7 +2632,7 @@ exports.decode = function (charCode) {
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-var util = __webpack_require__(0);
+var util = __webpack_require__(3);
 
 /**
  * Determine whether mappingB is after mappingA with respect to generated
@@ -2319,7 +2707,7 @@ exports.MappingList = MappingList;
 
 
 /***/ }),
-/* 13 */
+/* 17 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -2329,11 +2717,11 @@ exports.MappingList = MappingList;
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-var util = __webpack_require__(0);
-var binarySearch = __webpack_require__(14);
-var ArraySet = __webpack_require__(5).ArraySet;
-var base64VLQ = __webpack_require__(4);
-var quickSort = __webpack_require__(15).quickSort;
+var util = __webpack_require__(3);
+var binarySearch = __webpack_require__(18);
+var ArraySet = __webpack_require__(8).ArraySet;
+var base64VLQ = __webpack_require__(7);
+var quickSort = __webpack_require__(19).quickSort;
 
 function SourceMapConsumer(aSourceMap) {
   var sourceMap = aSourceMap;
@@ -3407,7 +3795,7 @@ exports.IndexedSourceMapConsumer = IndexedSourceMapConsumer;
 
 
 /***/ }),
-/* 14 */
+/* 18 */
 /***/ (function(module, exports) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -3524,7 +3912,7 @@ exports.search = function search(aNeedle, aHaystack, aCompare, aBias) {
 
 
 /***/ }),
-/* 15 */
+/* 19 */
 /***/ (function(module, exports) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -3644,7 +4032,7 @@ exports.quickSort = function (ary, comparator) {
 
 
 /***/ }),
-/* 16 */
+/* 20 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /* -*- Mode: js; js-indent-level: 2; -*- */
@@ -3654,8 +4042,8 @@ exports.quickSort = function (ary, comparator) {
  * http://opensource.org/licenses/BSD-3-Clause
  */
 
-var SourceMapGenerator = __webpack_require__(3).SourceMapGenerator;
-var util = __webpack_require__(0);
+var SourceMapGenerator = __webpack_require__(6).SourceMapGenerator;
+var util = __webpack_require__(3);
 
 // Matches a Windows-style `\r\n` newline or a `\n` newline used by all other
 // operating systems these days (capturing the result).
@@ -4063,19 +4451,117 @@ exports.SourceNode = SourceNode;
 
 
 /***/ }),
-/* 17 */
+/* 21 */
 /***/ (function(module, exports) {
 
 module.exports = require("fs");
 
 /***/ }),
-/* 18 */
+/* 22 */
 /***/ (function(module, exports) {
 
 module.exports = require("module");
 
 /***/ }),
-/* 19 */
+/* 23 */
+/***/ (function(module, exports) {
+
+module.exports = (val) => {
+  return val &&
+    typeof val.then === 'function' &&
+    typeof val.catch === 'function'
+}
+
+
+/***/ }),
+/* 24 */
+/***/ (function(module, exports, __webpack_require__) {
+
+var wrappy = __webpack_require__(25)
+module.exports = wrappy(once)
+module.exports.strict = wrappy(onceStrict)
+
+once.proto = once(function () {
+  Object.defineProperty(Function.prototype, 'once', {
+    value: function () {
+      return once(this)
+    },
+    configurable: true
+  })
+
+  Object.defineProperty(Function.prototype, 'onceStrict', {
+    value: function () {
+      return onceStrict(this)
+    },
+    configurable: true
+  })
+})
+
+function once (fn) {
+  var f = function () {
+    if (f.called) return f.value
+    f.called = true
+    return f.value = fn.apply(this, arguments)
+  }
+  f.called = false
+  return f
+}
+
+function onceStrict (fn) {
+  var f = function () {
+    if (f.called)
+      throw new Error(f.onceError)
+    f.called = true
+    return f.value = fn.apply(this, arguments)
+  }
+  var name = fn.name || 'Function wrapped with `once`'
+  f.onceError = name + " shouldn't be called more than once"
+  f.called = false
+  return f
+}
+
+
+/***/ }),
+/* 25 */
+/***/ (function(module, exports) {
+
+// Returns a wrapper function that returns a wrapped callback
+// The wrapper function should do some stuff, and return a
+// presumably different callback function.
+// This makes sure that own properties are retained, so that
+// decorations and such are not lost along the way.
+module.exports = wrappy
+function wrappy (fn, cb) {
+  if (fn && cb) return wrappy(fn)(cb)
+
+  if (typeof fn !== 'function')
+    throw new TypeError('need wrapper function')
+
+  Object.keys(fn).forEach(function (k) {
+    wrapper[k] = fn[k]
+  })
+
+  return wrapper
+
+  function wrapper() {
+    var args = new Array(arguments.length)
+    for (var i = 0; i < args.length; i++) {
+      args[i] = arguments[i]
+    }
+    var ret = fn.apply(this, args)
+    var cb = args[args.length-1]
+    if (typeof ret === 'function' && ret !== cb) {
+      Object.keys(cb).forEach(function (k) {
+        ret[k] = cb[k]
+      })
+    }
+    return ret
+  }
+}
+
+
+/***/ }),
+/* 26 */
 /***/ (function(module, exports, __webpack_require__) {
 
 /*!
@@ -4088,9 +4574,9 @@ module.exports = require("module");
  * Module dependencies.
  */
 
-var callSiteToString = __webpack_require__(7).callSiteToString
-var eventListenerCount = __webpack_require__(7).eventListenerCount
-var relative = __webpack_require__(6).relative
+var callSiteToString = __webpack_require__(10).callSiteToString
+var eventListenerCount = __webpack_require__(10).eventListenerCount
+var relative = __webpack_require__(9).relative
 
 /**
  * Module exports.
@@ -4603,13 +5089,13 @@ function DeprecationError (namespace, message, stack) {
 
 
 /***/ }),
-/* 20 */
+/* 27 */
 /***/ (function(module, exports) {
 
 module.exports = require("events");
 
 /***/ }),
-/* 21 */
+/* 28 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4719,7 +5205,7 @@ function getConstructorName (obj) {
 
 
 /***/ }),
-/* 22 */
+/* 29 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4748,7 +5234,7 @@ function eventListenerCount (emitter, type) {
 
 
 /***/ }),
-/* 23 */
+/* 30 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4772,7 +5258,7 @@ function mixinProperties (obj, proto) {
 
 
 /***/ }),
-/* 24 */
+/* 31 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4790,7 +5276,7 @@ function mixinProperties (obj, proto) {
  * @private
  */
 
-var codes = __webpack_require__(25)
+var codes = __webpack_require__(32)
 
 /**
  * Module exports.
@@ -4892,34 +5378,34 @@ function status (code) {
 
 
 /***/ }),
-/* 25 */
+/* 32 */
 /***/ (function(module) {
 
 module.exports = JSON.parse("{\"100\":\"Continue\",\"101\":\"Switching Protocols\",\"102\":\"Processing\",\"103\":\"Early Hints\",\"200\":\"OK\",\"201\":\"Created\",\"202\":\"Accepted\",\"203\":\"Non-Authoritative Information\",\"204\":\"No Content\",\"205\":\"Reset Content\",\"206\":\"Partial Content\",\"207\":\"Multi-Status\",\"208\":\"Already Reported\",\"226\":\"IM Used\",\"300\":\"Multiple Choices\",\"301\":\"Moved Permanently\",\"302\":\"Found\",\"303\":\"See Other\",\"304\":\"Not Modified\",\"305\":\"Use Proxy\",\"306\":\"(Unused)\",\"307\":\"Temporary Redirect\",\"308\":\"Permanent Redirect\",\"400\":\"Bad Request\",\"401\":\"Unauthorized\",\"402\":\"Payment Required\",\"403\":\"Forbidden\",\"404\":\"Not Found\",\"405\":\"Method Not Allowed\",\"406\":\"Not Acceptable\",\"407\":\"Proxy Authentication Required\",\"408\":\"Request Timeout\",\"409\":\"Conflict\",\"410\":\"Gone\",\"411\":\"Length Required\",\"412\":\"Precondition Failed\",\"413\":\"Payload Too Large\",\"414\":\"URI Too Long\",\"415\":\"Unsupported Media Type\",\"416\":\"Range Not Satisfiable\",\"417\":\"Expectation Failed\",\"418\":\"I'm a teapot\",\"421\":\"Misdirected Request\",\"422\":\"Unprocessable Entity\",\"423\":\"Locked\",\"424\":\"Failed Dependency\",\"425\":\"Unordered Collection\",\"426\":\"Upgrade Required\",\"428\":\"Precondition Required\",\"429\":\"Too Many Requests\",\"431\":\"Request Header Fields Too Large\",\"451\":\"Unavailable For Legal Reasons\",\"500\":\"Internal Server Error\",\"501\":\"Not Implemented\",\"502\":\"Bad Gateway\",\"503\":\"Service Unavailable\",\"504\":\"Gateway Timeout\",\"505\":\"HTTP Version Not Supported\",\"506\":\"Variant Also Negotiates\",\"507\":\"Insufficient Storage\",\"508\":\"Loop Detected\",\"509\":\"Bandwidth Limit Exceeded\",\"510\":\"Not Extended\",\"511\":\"Network Authentication Required\"}");
 
 /***/ }),
-/* 26 */
+/* 33 */
 /***/ (function(module, exports, __webpack_require__) {
 
 try {
-  var util = __webpack_require__(27);
+  var util = __webpack_require__(34);
   /* istanbul ignore next */
   if (typeof util.inherits !== 'function') throw '';
   module.exports = util.inherits;
 } catch (e) {
   /* istanbul ignore next */
-  module.exports = __webpack_require__(28);
+  module.exports = __webpack_require__(35);
 }
 
 
 /***/ }),
-/* 27 */
+/* 34 */
 /***/ (function(module, exports) {
 
 module.exports = require("util");
 
 /***/ }),
-/* 28 */
+/* 35 */
 /***/ (function(module, exports) {
 
 if (typeof Object.create === 'function') {
@@ -4952,7 +5438,7 @@ if (typeof Object.create === 'function') {
 
 
 /***/ }),
-/* 29 */
+/* 36 */
 /***/ (function(module, exports) {
 
 /*!
@@ -4988,7 +5474,236 @@ function toIdentifier (str) {
 
 
 /***/ }),
-/* 30 */
+/* 37 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/*!
+ * content-type
+ * Copyright(c) 2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+
+
+/**
+ * RegExp to match *( ";" parameter ) in RFC 7231 sec 3.1.1.1
+ *
+ * parameter     = token "=" ( token / quoted-string )
+ * token         = 1*tchar
+ * tchar         = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+ *               / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+ *               / DIGIT / ALPHA
+ *               ; any VCHAR, except delimiters
+ * quoted-string = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+ * qdtext        = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+ * obs-text      = %x80-FF
+ * quoted-pair   = "\" ( HTAB / SP / VCHAR / obs-text )
+ */
+var PARAM_REGEXP = /; *([!#$%&'*+.^_`|~0-9A-Za-z-]+) *= *("(?:[\u000b\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\u000b\u0020-\u00ff])*"|[!#$%&'*+.^_`|~0-9A-Za-z-]+) */g
+var TEXT_REGEXP = /^[\u000b\u0020-\u007e\u0080-\u00ff]+$/
+var TOKEN_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
+/**
+ * RegExp to match quoted-pair in RFC 7230 sec 3.2.6
+ *
+ * quoted-pair = "\" ( HTAB / SP / VCHAR / obs-text )
+ * obs-text    = %x80-FF
+ */
+var QESC_REGEXP = /\\([\u000b\u0020-\u00ff])/g
+
+/**
+ * RegExp to match chars that must be quoted-pair in RFC 7230 sec 3.2.6
+ */
+var QUOTE_REGEXP = /([\\"])/g
+
+/**
+ * RegExp to match type in RFC 7231 sec 3.1.1.1
+ *
+ * media-type = type "/" subtype
+ * type       = token
+ * subtype    = token
+ */
+var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+
+/**
+ * Module exports.
+ * @public
+ */
+
+exports.format = format
+exports.parse = parse
+
+/**
+ * Format object to media type.
+ *
+ * @param {object} obj
+ * @return {string}
+ * @public
+ */
+
+function format (obj) {
+  if (!obj || typeof obj !== 'object') {
+    throw new TypeError('argument obj is required')
+  }
+
+  var parameters = obj.parameters
+  var type = obj.type
+
+  if (!type || !TYPE_REGEXP.test(type)) {
+    throw new TypeError('invalid type')
+  }
+
+  var string = type
+
+  // append parameters
+  if (parameters && typeof parameters === 'object') {
+    var param
+    var params = Object.keys(parameters).sort()
+
+    for (var i = 0; i < params.length; i++) {
+      param = params[i]
+
+      if (!TOKEN_REGEXP.test(param)) {
+        throw new TypeError('invalid parameter name')
+      }
+
+      string += '; ' + param + '=' + qstring(parameters[param])
+    }
+  }
+
+  return string
+}
+
+/**
+ * Parse media type to object.
+ *
+ * @param {string|object} string
+ * @return {Object}
+ * @public
+ */
+
+function parse (string) {
+  if (!string) {
+    throw new TypeError('argument string is required')
+  }
+
+  // support req/res-like objects as argument
+  var header = typeof string === 'object'
+    ? getcontenttype(string)
+    : string
+
+  if (typeof header !== 'string') {
+    throw new TypeError('argument string is required to be a string')
+  }
+
+  var index = header.indexOf(';')
+  var type = index !== -1
+    ? header.substr(0, index).trim()
+    : header.trim()
+
+  if (!TYPE_REGEXP.test(type)) {
+    throw new TypeError('invalid media type')
+  }
+
+  var obj = new ContentType(type.toLowerCase())
+
+  // parse parameters
+  if (index !== -1) {
+    var key
+    var match
+    var value
+
+    PARAM_REGEXP.lastIndex = index
+
+    while ((match = PARAM_REGEXP.exec(header))) {
+      if (match.index !== index) {
+        throw new TypeError('invalid parameter format')
+      }
+
+      index += match[0].length
+      key = match[1].toLowerCase()
+      value = match[2]
+
+      if (value[0] === '"') {
+        // remove quotes and escapes
+        value = value
+          .substr(1, value.length - 2)
+          .replace(QESC_REGEXP, '$1')
+      }
+
+      obj.parameters[key] = value
+    }
+
+    if (index !== header.length) {
+      throw new TypeError('invalid parameter format')
+    }
+  }
+
+  return obj
+}
+
+/**
+ * Get content-type from req/res objects.
+ *
+ * @param {object}
+ * @return {Object}
+ * @private
+ */
+
+function getcontenttype (obj) {
+  var header
+
+  if (typeof obj.getHeader === 'function') {
+    // res-like
+    header = obj.getHeader('content-type')
+  } else if (typeof obj.headers === 'object') {
+    // req-like
+    header = obj.headers && obj.headers['content-type']
+  }
+
+  if (typeof header !== 'string') {
+    throw new TypeError('content-type header is missing from object')
+  }
+
+  return header
+}
+
+/**
+ * Quote a string if necessary.
+ *
+ * @param {string} val
+ * @return {string}
+ * @private
+ */
+
+function qstring (val) {
+  var str = String(val)
+
+  // no need to quote tokens
+  if (TOKEN_REGEXP.test(str)) {
+    return str
+  }
+
+  if (str.length > 0 && !TEXT_REGEXP.test(str)) {
+    throw new TypeError('invalid parameter value')
+  }
+
+  return '"' + str.replace(QUOTE_REGEXP, '\\$1') + '"'
+}
+
+/**
+ * Class to represent a content type.
+ * @private
+ */
+function ContentType (type) {
+  this.parameters = Object.create(null)
+  this.type = type
+}
+
+
+/***/ }),
+/* 38 */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -4996,113 +5711,153 @@ function toIdentifier (str) {
 __webpack_require__.r(__webpack_exports__);
 
 // EXPORTS
-__webpack_require__.d(__webpack_exports__, "handler", function() { return /* binding */ handler; });
+__webpack_require__.d(__webpack_exports__, "handler", function() { return /* binding */ uploadPicture_handler; });
 
 // EXTERNAL MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/node_modules/source-map-support/register.js
 var register = __webpack_require__(2);
 
+// EXTERNAL MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/node_modules/@middy/core/index.js
+var core = __webpack_require__(4);
+var core_default = /*#__PURE__*/__webpack_require__.n(core);
+
+// EXTERNAL MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/node_modules/@middy/http-error-handler/index.js
+var http_error_handler = __webpack_require__(5);
+var http_error_handler_default = /*#__PURE__*/__webpack_require__.n(http_error_handler);
+
 // EXTERNAL MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/node_modules/http-errors/index.js
-var http_errors = __webpack_require__(8);
+var http_errors = __webpack_require__(0);
 var http_errors_default = /*#__PURE__*/__webpack_require__.n(http_errors);
 
 // EXTERNAL MODULE: external "aws-sdk"
 var external_aws_sdk_ = __webpack_require__(1);
 var external_aws_sdk_default = /*#__PURE__*/__webpack_require__.n(external_aws_sdk_);
 
-// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/lib/closeAuction.js
+// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/lib/updateAuctionImage.js
 
 
-const closeAuction_documentClient = new external_aws_sdk_default.a.DynamoDB.DocumentClient();
-const sqs = new external_aws_sdk_default.a.SQS();
-async function closeAuction(auction) {
+const updateAuctionImage_documentClient = new external_aws_sdk_default.a.DynamoDB.DocumentClient();
+async function updateAuctionImage(id, imageUrl) {
   const params = {
     TableName: process.env.AUCTION_TABLE_NAME,
     Key: {
-      id: auction.id
+      id
     },
-    UpdateExpression: "set #status = :status",
+    UpdateExpression: "set imageUrl = :imageUrl",
     ExpressionAttributeValues: {
-      ":status": "CLOSED"
+      ":imageUrl": imageUrl
     },
-    ExpressionAttributeNames: {
-      "#status": "status"
-    }
+    ReturnValues: "ALL_NEW"
   };
-  const result = await closeAuction_documentClient.update(params).promise();
-  console.log("Document ---->>> close");
-  const {
-    seller,
-    higthestBid,
-    title
-  } = auction;
-  const {
-    amount,
-    bidder
-  } = higthestBid;
-  const notifySeller = sqs.sendMessage({
-    QueueUrl: process.env.MAIL_QUEUE_URL,
-    MessageBody: JSON.stringify({
-      subject: "Item has been sold",
-      body: `Woo!. Your ${title} has been sold in ${amount} dollars`,
-      recipient: seller
-    })
-  }).promise();
-  const notifyBidder = sqs.sendMessage({
-    QueueUrl: process.env.MAIL_QUEUE_URL,
-    MessageBody: JSON.stringify({
-      subject: "You won the item",
-      body: `Woo!. You won the item ${title}  in ${amount} dollars`,
-      recipient: bidder
-    })
-  }).promise();
-  Promise.all([notifySeller, notifyBidder]);
-  return result;
+  const result = await updateAuctionImage_documentClient.update(params).promise();
+  const updatedAuction = result.Attributes;
+  return updatedAuction;
 }
-// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/lib/getEndedAction.js
+// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/lib/uploadPictureToS3.js
 
 
-async function getEndedActions() {
+const s3 = new external_aws_sdk_default.a.S3();
+async function uploadPictureToS3(key, body) {
+  const result = await s3.upload({
+    Bucket: process.env.AUCTION_BUCKET_NAME,
+    Key: key,
+    Body: body,
+    ContentEncoding: "base64",
+    ContentType: "image/jpeg"
+  }).promise();
+  return result.Location;
+}
+// EXTERNAL MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/node_modules/@middy/http-event-normalizer/index.js
+var http_event_normalizer = __webpack_require__(11);
+var http_event_normalizer_default = /*#__PURE__*/__webpack_require__.n(http_event_normalizer);
+
+// EXTERNAL MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/node_modules/@middy/http-json-body-parser/index.js
+var http_json_body_parser = __webpack_require__(12);
+var http_json_body_parser_default = /*#__PURE__*/__webpack_require__.n(http_json_body_parser);
+
+// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/lib/comon-middleware.js
+
+
+
+
+
+/* harmony default export */ var comon_middleware = (handler => core_default()(handler).use([http_json_body_parser_default()(), http_error_handler_default()(), http_event_normalizer_default()()]));
+// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/handlers/getAuction.js
+
+
+
+
+async function getAuctionById(id) {
+  let auction;
   const documentClient = new external_aws_sdk_default.a.DynamoDB.DocumentClient();
-  const now = new Date();
-  const params = {
-    TableName: process.env.AUCTION_TABLE_NAME,
-    IndexName: "StatusAndEndDate",
-    KeyConditionExpression: "#status = :status and endDateAt <= :now",
-    ExpressionAttributeNames: {
-      "#status": "status"
-    },
-    ExpressionAttributeValues: {
-      ":status": "OPEN",
-      ":now": now.toISOString()
-    }
-  };
-  const result = await documentClient.query(params).promise();
-  return result.Items;
-}
-// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/handlers/processAuction.js
 
-
-
-
-
-async function processAuction(event, context) {
   try {
-    const auctionsToClose = await getEndedActions();
-    console.log("Actions to close ----->>>");
-    console.log(auctionsToClose);
-    const closeAuctionPromises = auctionsToClose.map(auction => closeAuction(auction));
-    Promise.all(closeAuctionPromises);
-    return {
-      closed: closeAuctionPromises.length
-    };
+    const result = await documentClient.get({
+      TableName: process.env.AUCTION_TABLE_NAME,
+      Key: {
+        id
+      }
+    }).promise();
+    auction = result.Item;
   } catch (error) {
     console.error(error);
-    http_errors_default.a.InternalServerError(error);
+    throw new http_errors_default.a.InternalServerError(error);
   }
+
+  if (!auction) {
+    throw new http_errors_default.a.NotFound(`auction ${id} Not Found`);
+  }
+
+  return auction;
 }
 
-const handler = processAuction;
+async function getAuction(event, context) {
+  const {
+    id
+  } = event.pathParameters;
+  const auction = await getAuctionById(id);
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      auction
+    })
+  };
+}
+
+const getAuction_handler = comon_middleware(getAuction);
+// CONCATENATED MODULE: /Users/jcq012/Documents/test-projects/microservices/udemy-course/aws-microservices/packages/auction-services/src/handlers/uploadPicture.js
+
+
+
+
+
+
+
+
+async function uploadPicture(event, context) {
+  const {
+    id
+  } = event.pathParameters;
+  const auction = await getAuctionById(id);
+  const base64 = event.body.replace(/^data:image\/\w+;base64,/, "");
+  const buffer = Buffer.from(base64, "base64");
+  let updatedAuction;
+
+  try {
+    const imageUrl = await uploadPictureToS3(`${auction.id}.jpg`, buffer);
+    updatedAuction = await updateAuctionImage(auction.id, imageUrl);
+  } catch (error) {
+    console.error(error);
+    throw new http_errors_default.a.InternalServerError(error);
+  }
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify(updatedAuction)
+  };
+}
+
+const uploadPicture_handler = core_default()(uploadPicture).use(http_error_handler_default()());
 
 /***/ })
 /******/ ])));
-//# sourceMappingURL=processAuction.js.map
+//# sourceMappingURL=uploadPicture.js.map

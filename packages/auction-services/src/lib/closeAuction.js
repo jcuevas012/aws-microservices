@@ -57,7 +57,7 @@ export async function closeAuction(auction) {
     })
     .promise()
 
-  Promise.all([notifySeller, notifyBidder])
+  await Promise.all([notifySeller, notifyBidder])
 
   return result
 }

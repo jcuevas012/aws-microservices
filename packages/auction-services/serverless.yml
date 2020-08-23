@@ -14,13 +14,17 @@ provider:
   environment:
     AUCTION_TABLE_NAME: ${self:custom.AuctionTable.name}
     MAIL_QUEUE_URL: ${self:custom.MailQueue.url}
+    AUCTION_BUCKET_NAME: ${self:custom.AuctionBucket.name}
   iamRoleStatements:
     - ${file(iam/AuctionTableIAM.yml):AuctionTableIAM}
     - ${file(iam/MailQueueIAM.yml):MailQueueIAM}
+    - ${file(iam/AuctionBucketIAM.yml):AuctionBucketIAM}
 
 resources:
   Resources:
     AuctionTable: ${file(resources/AuctionTable.yml):AuctionTable}
+    AuctionBucket: ${file(resources/AuctionBucket.yml):AuctionBucket}
+    AuctionBucketPolicy: ${file(resources/AuctionBucket.yml):AuctionBucketPolicy}
 
 functions:
   createAuction:
@@ -44,6 +48,13 @@ functions:
           method: GET
           path: /auctions/{id}
           authorizer: ${self:custom.authorizer}
+  uploadPicture:
+    handler: src/handlers/uploadPicture.handler
+    events:
+      - http:
+          method: PATCH
+          path: /auctions/{id}/uploadPicture
+          authorizer: ${self:custom.authorizer}
   placeBidAuction:
     handler: src/handlers/placeBidAuction.handler
     events:
@@ -63,5 +74,7 @@ custom:
   MailQueue:
     arn: ${cf:notification-services-${self:provider.stage}.MailQueueArn}
     url: ${cf:notification-services-${self:provider.stage}.MailQueueUrl}
+  AuctionBucket:
+    name: auction-bucket-prueba-${self:provider.stage}
   bundle:
     linting: false

@@ -6,6 +6,8 @@ import commonMiddleware from "../lib/comon-middleware"
 import placeBidSchema from "../lib/schemas/placeBidSchema"
 import { getAuctionById } from "./getAuction"
 
+const documentClient = new AWS.DynamoDB.DocumentClient()
+
 async function updateAuction(event, context) {
   const { id } = event.pathParameters
   const { email } = event.requestContext.authorizer
@@ -32,8 +34,6 @@ async function updateAuction(event, context) {
       `Your bid you be higther then ${auction.higthestBid.amount}`
     )
   }
-
-  const documentClient = new AWS.DynamoDB.DocumentClient()
 
   const params = {
     TableName: process.env.AUCTION_TABLE_NAME,
